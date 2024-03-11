@@ -1,3 +1,4 @@
+use std::env;
 use std::process::ExitCode;
 use reqwest::blocking::Client;
 use serde_json::{Value};
@@ -47,7 +48,7 @@ fn print_connectors( v: &Value) -> Option<()>
     Some(())
 }
 
-fn wanstat() -> reqwest::Result<()>
+fn wanstat(router_ip: &str) -> reqwest::Result<()>
 {
     let password = match get_password() {
         Some(password) => password,
@@ -56,9 +57,10 @@ fn wanstat() -> reqwest::Result<()>
 
     let client = Client::new();
 
+    let target_url = format!("http://{}/api/status/wan", router_ip);
+
     let result = client
-//        .get("http://172.16.253.1/api/status/wlan/state")
-        .get("http://172.16.253.1/api/status/wan")
+        .get(target_url)
         .basic_auth("admin", Some(password))
         .send();
 
@@ -132,7 +134,10 @@ fn wanstat() -> reqwest::Result<()>
 
 fn main() -> ExitCode {
 
-    let _ = wanstat();
+    let args: Vec<String> = env::args().collect();
+    let router_ip:&str = &args[1];
+
+    let _ = wanstat(router_ip);
 
     ExitCode::SUCCESS
 }
