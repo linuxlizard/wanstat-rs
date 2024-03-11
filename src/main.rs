@@ -20,12 +20,13 @@ fn make_string( o: Option<&Value> ) -> String
     }
 }
 
-fn print_connectors( v: &Value) -> Option<()>
+fn print_connectors( v: &Value, dev: &String ) -> Option<()>
 {
     if let Some(conns) = v.as_array() {
 
         if conns.len() > 0 {
-            println!("\n                                    NAME  STATE           EXCEPTION  TIMEOUT  ");
+            println!("\nconnectors for {}", dev);
+            println!("                                    NAME  STATE           EXCEPTION  TIMEOUT  ");
         }
 
         for c in conns {
@@ -119,14 +120,17 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
         println!("{dev:>40} {type_:<10} {plugged:<7} {reason:<10} {summary}");
         
     }
+
     for dev in devices.keys() {
         let fields = devices.get(dev)
                         .unwrap()
                         .as_object()
                         .unwrap();
 
+        let printer = |conn| print_connectors(conn, dev);
+
         let connectors = fields.get("connectors");
-        let _ = connectors.and_then(print_connectors);
+        let _ = connectors.and_then(printer);
     }
 
     Ok(())
