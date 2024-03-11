@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 use reqwest::blocking::Client;
-use serde_json::{json, Value};
+use serde_json::{Value};
 
 fn get_password() -> Option<String>
 {
@@ -9,30 +9,6 @@ fn get_password() -> Option<String>
         Ok(password) => Some(password),
         Err(_) => None
     }
-}
-
-fn _simple()
-{
-    let password = match get_password() {
-        Some(password) => password,
-        _ => panic!("unable to find CP_PASSWORD in environment")
-    };
-
-    let client = Client::new();
-
-    let result = client
-        .get("http://172.16.253.1/api/status/wlan/state")
-        .basic_auth("admin", Some(password))
-        .send();
-
-    println!("result = {:?}", result);
-
-    let response = result.unwrap();
-    println!("response={:?}", response);
-    println!("status={}", response.status());
-    let text = response.text().unwrap();
-    let j_data = json!(text);
-    println!("j_data={:?}", j_data);
 }
 
 fn make_string( o: Option<&Value> ) -> String
@@ -68,16 +44,10 @@ fn print_connectors( v: &Value) -> Option<()>
         }
     }
 
-    if v.is_array() {
-
-    }
-
-
-
     Some(())
 }
 
-fn harder() -> reqwest::Result<()>
+fn wanstat() -> reqwest::Result<()>
 {
     let password = match get_password() {
         Some(password) => password,
@@ -161,24 +131,9 @@ fn harder() -> reqwest::Result<()>
 }
 
 fn main() -> ExitCode {
-//    simple();
 
-    let _ = harder();
+    let _ = wanstat();
 
-//    if let Ok(ref response) = result {
-//        println!("response={:?}", *response);
-//        println!("status={}", (*response).status());
-//
-//        let ref text = (*response).text();
-//
-////        println!("text={}", response.text().unwrap() );
-////        if let Ok(data) = &response.text() {
-////            let j_data = json!(data);
-////            println!("j_data={:?}", j_data);
-////        }
-//    }
-
-//    println!("result = {:?}", result);
     ExitCode::SUCCESS
 }
 
