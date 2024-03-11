@@ -132,25 +132,17 @@ fn harder() -> reqwest::Result<()>
         let status = fields.get("status").unwrap().as_object().unwrap();
         let _diagnostics = fields.get("diagnostics");
 
-        let type_:String = match info.get("type") {
-            Some(&ref s) => s.as_str().unwrap_or("(none)").to_string(),
-            None => "(none)".to_string()
-        };
+        let type_ = make_string(info.get("type"));
 
-        let plugged:String = match status.get("plugged") {
+       // boolean
+       let plugged:String = match status.get("plugged") {
             Some(&ref s) => s.to_string(),
             None => "(none)".to_string()
         };
 
-        let reason:String = match status.get("reason")  {
-            Some(&ref s) => s.as_str().unwrap_or("(none)").to_string(),
-            None => "(none)".to_string()
-        };
+        let reason = make_string(status.get("reason"));
 
-        let summary:String = match status.get("summary")  {
-            Some(&ref s) => s.as_str().unwrap_or("(none)").to_string(),
-            None => "(none)".to_string()
-        };
+        let summary = make_string(status.get("summary"));
 
         println!("{dev:>40} {type_:<10} {plugged:<7} {reason:<10} {summary}");
         
@@ -163,14 +155,7 @@ fn harder() -> reqwest::Result<()>
 
         let connectors = fields.get("connectors");
         let _ = connectors.and_then(print_connectors);
-//        if connectors.is_none() {
-//            continue;
-//        }
     }
-
-//    if let Value::Object(dev) = device_list {
-//        println!("{:?}", dev);
-//    }
 
     Ok(())
 }
