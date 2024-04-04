@@ -2,6 +2,68 @@ use std::env;
 use std::process::ExitCode;
 use reqwest::blocking::Client;
 use serde_json::{Value};
+use std::net::{IpAddr};
+//use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+pub trait Connector 
+{
+    fn print(&self) -> String;
+}
+
+// connector we don't have a full parser for
+pub struct GenericConnector
+{
+    pub name: String,
+    pub enabled: bool,
+    pub state: String
+}
+
+impl Connector for GenericConnector
+{
+    fn print(&self) -> String {
+        format!("{} {} {}", self.name, self.enabled, self.state)
+    }
+}
+
+pub struct WiFiClientConnector
+{
+    pub name: String,
+    pub ssid: String,
+    pub signal_strength : i32,
+    pub channel : u32,
+    pub enabled : bool,
+    pub state : String,
+}
+
+impl Connector for WiFiClientConnector
+{
+    fn print(&self) -> String {
+        format!("{} {} {} \"{}\" rssi={} channel={}", self.name, self.enabled, self.state, self.ssid, self.signal_strength, self.channel)
+    }
+}
+
+pub struct IPInfo
+{
+    pub ip_address : IpAddr,
+    pub netmask : IpAddr,
+    pub gateway: IpAddr,
+}
+
+pub struct DHCPConnector 
+{
+    pub name: String,
+//    pub ipinfo : IPInfo,
+
+    pub enabled : bool,
+    pub state : String,
+}
+
+impl Connector for DHCPConnector
+{
+    fn print(&self) -> String {
+        format!("{} {} {}", self.name, self.enabled, self.state)
+    }
+}
 
 fn get_password() -> Option<String>
 {
@@ -19,6 +81,74 @@ fn make_string( o: Option<&Value> ) -> String
         None => "(none)".to_string()
     }
 }
+
+//fn get_none() -> &'static str
+//{
+//    const NONE: &str = "(none)";
+//    NONE
+//}
+
+fn str_or_none<'a>( entry: &'a serde_json::Map<String, Value>, key: &str) -> &'a str
+{
+    const NONE: &str = "(none)";
+
+    match entry.get(key) {
+        Some(s) => s.as_str().unwrap_or(NONE),
+        None => NONE
+    }
+}
+
+fn parse_connector( entry: &serde_json::Map<String, Value> ) -> Box<dyn Connector>
+{
+//    const NONE: &str = "(none)";
+
+//    let name:&str = match entry.get("name") {
+//        Some(s) => s.as_str().unwrap_or(NONE),
+//        None => NONE
+//    };
+
+    let name:&str = str_or_none(entry, "name");
+
+    let state:String = make_string(entry.get("state"));
+
+    let enabled:bool = entry.get("enabled").unwrap().as_bool().unwrap();
+
+    println!("parse connector name={}", name);
+
+    match name {
+        "WiFiClient" => {
+            Box::new(
+                WiFiClientConnector {
+                    name: String::from(name),
+                    ssid: String::from("SSID"),
+                    signal_strength: -30,
+                    channel: 6,
+                    enabled: enabled,
+                    state: state
+                })
+        },
+
+        "DHCP" => {
+            Box::new(
+                DHCPConnector {
+                    name: String::from(name),
+                    enabled: enabled,
+                    state: state
+                })
+        },
+    
+        _ => {
+            Box::new(
+                GenericConnector {
+                    name: String::from(name),
+                    enabled: enabled,
+                    state: state
+                })
+        }
+    }
+
+}
+
 
 fn print_connectors( v: &Value, dev: &String ) -> Option<()>
 {
@@ -49,6 +179,16 @@ fn print_connectors( v: &Value, dev: &String ) -> Option<()>
     Some(())
 }
 
+fn get_connectors(connectors: Option<&serde_json::Value>) -> Option<Vec<Box<dyn Connector>>>
+{
+    Some(connectors?
+        .as_array()?
+        .iter()
+        .filter_map(|c| c.as_object() )
+        .map(|cc| parse_connector(cc))
+        .collect())
+}
+
 fn wanstat(router_ip: &str) -> reqwest::Result<()>
 {
     let password = match get_password() {
@@ -65,7 +205,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
         .basic_auth("admin", Some(password))
         .send();
 
-    println!("result = {:?}", result);
+//    println!("result = {:?}", result);
 
     if let Ok(ref r) = result {
         println!("status={}", r.status().as_u16());
@@ -126,11 +266,19 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
                         .unwrap()
                         .as_object()
                         .unwrap();
+        let _diagnostics = fields.get("diagnostics");
 
-        let printer = |conn| print_connectors(conn, dev);
+        let printer = |conns| print_connectors(conns, dev);
 
-        let connectors = fields.get("connectors");
-        let _ = connectors.and_then(printer);
+        let _ = fields.get("connectors").and_then(printer);
+
+        let connectors:Option<Vec<Box<dyn Connector>>> = get_connectors(fields.get("connectors"));
+        if let Some(conns) = connectors {
+            for c in conns {
+                println!("c={}", c.print());
+            }
+        }
+
     }
 
     Ok(())
