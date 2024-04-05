@@ -29,8 +29,8 @@ pub struct WiFiClientConnector
 {
     pub name: String,
     pub ssid: String,
-    pub signal_strength : i32,
-    pub channel : u32,
+    pub signal_strength : Option<i32>,
+    pub channel : Option<u32>,
     pub enabled : bool,
     pub state : String,
 }
@@ -38,7 +38,25 @@ pub struct WiFiClientConnector
 impl Connector for WiFiClientConnector
 {
     fn print(&self) -> String {
-        format!("{} {} {} \"{}\" rssi={} channel={}", self.name, self.enabled, self.state, self.ssid, self.signal_strength, self.channel)
+        // TODO extract from Option
+
+        let signal_strength:String = match self.signal_strength {
+            Some(v) => v.to_string(),
+            None => "<unset>".to_string()
+        };
+
+        let channel:String = match self.channel {
+            Some(v) => v.to_string(),
+            None => "<unset>".to_string()
+        };
+
+        format!("{} {} {} \"{}\" rssi={} channel={}", 
+            self.name, 
+            self.enabled, 
+            self.state, 
+            self.ssid, 
+            signal_strength, 
+            channel)
     }
 }
 
@@ -98,20 +116,29 @@ fn str_or_none<'a>( entry: &'a serde_json::Map<String, Value>, key: &str) -> &'a
     }
 }
 
-fn parse_connector( entry: &serde_json::Map<String, Value> ) -> Box<dyn Connector>
+fn get_i32( field: Option<&Value> ) -> Option<i32>
 {
-//    const NONE: &str = "(none)";
+    match field?.as_f64()? {
+        n => Some(n as i32),
+    }
+}
 
-//    let name:&str = match entry.get("name") {
-//        Some(s) => s.as_str().unwrap_or(NONE),
-//        None => NONE
-//    };
+fn get_u32( field: Option<&Value> ) -> Option<u32>
+{
+    match field?.as_u64()? {
+        n => Some(n as u32),
+    }
+}
 
-    let name:&str = str_or_none(entry, "name");
+fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::Map<String, Value> ) -> Box<dyn Connector>
+{
+    let diagnostics = fields.get("diagnostics").unwrap().as_object().unwrap();
 
-    let state:String = make_string(entry.get("state"));
+    let name:&str = str_or_none(conn, "name");
 
-    let enabled:bool = entry.get("enabled").unwrap().as_bool().unwrap();
+    let state:String = make_string(conn.get("state"));
+
+    let enabled:bool = conn.get("enabled").unwrap().as_bool().unwrap();
 
     println!("parse connector name={}", name);
 
@@ -120,9 +147,9 @@ fn parse_connector( entry: &serde_json::Map<String, Value> ) -> Box<dyn Connecto
             Box::new(
                 WiFiClientConnector {
                     name: String::from(name),
-                    ssid: String::from("SSID"),
-                    signal_strength: -30,
-                    channel: 6,
+                    ssid: str_or_none(diagnostics, "SSID").to_string(),
+                    signal_strength: get_i32(diagnostics.get("signal_strength")),
+                    channel: get_u32(diagnostics.get("channel")),
                     enabled: enabled,
                     state: state
                 })
@@ -179,13 +206,15 @@ fn print_connectors( v: &Value, dev: &String ) -> Option<()>
     Some(())
 }
 
-fn get_connectors(connectors: Option<&serde_json::Value>) -> Option<Vec<Box<dyn Connector>>>
+fn get_connectors(fields: &serde_json::Map<String,Value> ) -> Option<Vec<Box<dyn Connector>>>
 {
+    let connectors = fields.get("connectors");
+
     Some(connectors?
         .as_array()?
         .iter()
         .filter_map(|c| c.as_object() )
-        .map(|cc| parse_connector(cc))
+        .map(|cc| parse_connector(fields, cc))
         .collect())
 }
 
@@ -272,7 +301,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
 
         let _ = fields.get("connectors").and_then(printer);
 
-        let connectors:Option<Vec<Box<dyn Connector>>> = get_connectors(fields.get("connectors"));
+        let connectors:Option<Vec<Box<dyn Connector>>> = get_connectors(fields);
         if let Some(conns) = connectors {
             for c in conns {
                 println!("c={}", c.print());
