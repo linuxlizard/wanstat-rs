@@ -132,8 +132,6 @@ fn get_u32( field: Option<&Value> ) -> Option<u32>
 
 fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::Map<String, Value> ) -> Box<dyn Connector>
 {
-    let diagnostics = fields.get("diagnostics").unwrap().as_object().unwrap();
-
     let name:&str = str_or_none(conn, "name");
 
     let state:String = make_string(conn.get("state"));
@@ -144,6 +142,7 @@ fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::M
 
     match name {
         "WiFiClient" => {
+            let diagnostics = fields.get("diagnostics").unwrap().as_object().unwrap();
             Box::new(
                 WiFiClientConnector {
                     name: String::from(name),
