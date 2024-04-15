@@ -1,6 +1,7 @@
 use std::env;
 use std::process::ExitCode;
 use reqwest::blocking::Client;
+use serde;
 use serde_json::{Value};
 //use std::net::{IpAddr,};
 use std::str::FromStr;
@@ -61,7 +62,7 @@ impl Connector for WiFiClientConnector
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,serde::Serialize,serde::Deserialize)]
 pub struct IPInfo
 {
     pub ip_address : IpAddr,
@@ -73,7 +74,19 @@ pub struct IPInfo
 impl std::fmt::Display for IPInfo
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ip={} sm={} gw={}", self.ip_address, self.netmask, self.gateway)
+        let dnslist:String = self.dnslist
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+                ;
+
+        write!(f, "ip={} sm={} gw={} dns=[{}]", 
+            self.ip_address, 
+            self.netmask, 
+            self.gateway,
+            dnslist
+        )
     }
 }
 
@@ -154,18 +167,17 @@ fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::M
 
     let enabled:bool = conn.get("enabled").unwrap().as_bool().unwrap();
 
-    for field in conn.keys() {
-        println!("parse_connector field={:?}", field);
-    }
+//    for field in conn.keys() {
+//        println!("parse_connector field={:?}", field);
+//    }
 
-    for v in conn {
-        let (a,b) = v;
-        println!("parse_connector a={:?}", a);
-        println!("parse_connector b={:?}", b);
-    }
+//    for v in conn {
+//        let (a,b) = v;
+//        println!("parse_connector a={:?}", a);
+//        println!("parse_connector b={:?}", b);
+//    }
 
-
-    println!("parse connector name={}", name);
+//    println!("parse connector name={}", name);
 
     match name {
         "WiFiClient" => {
@@ -183,11 +195,6 @@ fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::M
 
         "DHCP" => {
             println!("{} ipinfo get={:?}", name, conn.get("ipinfo"));
-
-//            let ipinfo = match conn.get("ipinfo") {
-//                Some(j_ipinfo) => parse_ipinfo(j_ipinfo.as_object().unwrap()),
-//                None => None
-//            };
 
             Box::new(
                 DHCPConnector {
@@ -261,25 +268,38 @@ fn parse_ipinfo( contents: &serde_json::Map<String,Value> ) -> Option<IPInfo>
         dnslist: vec![]
     };
     
-    for field in contents.keys() {
-//        println!("field={}", field);
-        if contents.get(field).unwrap().is_string() {
-            let ip_str = contents.get(field)
-                            .unwrap()
-                            .as_str()
-                            .unwrap();
-//            println!("field={} ip={}", field, ip_str);
-            
-            let rip = IpAddr::from_str(ip_str).unwrap();
-            println!("field={} ip={} rip={:?}", field, ip_str, rip);
+    for field in contents {
+        let (key,value) = field;
 
-            match field.as_str() {
-                "ip_address" => { ipinfo.ip_address = rip; },
-                "netmask" => { ipinfo.netmask = rip; },
-                "gateway" => { ipinfo.gateway = rip; },
+//        println!("field={:?} {}", field, value.is_string());
+
+        if value.is_string() {
+            let ip_str = value.as_str()
+                            .unwrap();
+//            println!("field={:?} ip={}", field, ip_str);
+            
+            let ip = IpAddr::from_str(ip_str).unwrap();
+//            println!("field={:?} ip={} rip={:?}", field, ip_str, ip);
+
+            match key.as_str() {
+                "ip_address" => { ipinfo.ip_address = ip; },
+                "netmask" => { ipinfo.netmask = ip; },
+                "gateway" => { ipinfo.gateway = ip; },
                 _ => {}
             };
-
+        }
+        else if value.is_array() {
+            // parse out the dnslist
+            for ipv in value.as_array().unwrap() {
+                println!("dns ip={}", ipv);
+            }
+            ipinfo.dnslist = value
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|i| IpAddr::from_str(i.as_str().unwrap()).unwrap())
+                        .collect()
+                        ;
         }
     }
 
@@ -413,7 +433,7 @@ mod tests {
     #[test]
     fn test_parse_ipinfo() 
     {
-        let ipinfo = json!({
+        let j = json!({
           "ipinfo": {
             "gateway": "192.168.1.1",
             "ip_address": "192.168.1.9",
@@ -422,10 +442,15 @@ mod tests {
               "192.168.1.1"
             ]
           }});
-        println!("test ipinfo={:?}", ipinfo);
+        println!("test j={:?}", j);
 
-        let ipi = parse_ipinfo(&ipinfo).expect("failed to parse 1");
-        println!("parsed ipinfo={}", ipi);
+        let ipinfo = parse_ipinfo(j.get("ipinfo").unwrap().as_object().unwrap()).expect("failed to parse");
+        println!("parsed ipinfo={}", ipinfo);
+        assert_eq!(ipinfo.ip_address.is_ipv4(), true);
+        assert_eq!(ipinfo.ip_address.to_string(), "192.168.1.9");
+        assert_eq!(ipinfo.gateway.to_string(), "192.168.1.1");
+        assert_eq!(ipinfo.netmask.to_string(), "255.255.255.0");
+        assert_eq!(ipinfo.dnslist.len(), 1);
     }
 
     #[test]
@@ -455,7 +480,7 @@ mod tests {
             }]});
 
 //        let conn = json!({});
-        let conn =devices 
+        let conn = devices 
                     .get("connectors")
                     .expect("should have found connectors")
                     .get(0)
@@ -468,7 +493,7 @@ mod tests {
         let ipinfo = conn.get("ipinfo").expect("should have found ipinfo");
         println!("ipinfo={:?}", ipinfo);
 
-        let ipi = parse_ipinfo(&conn).expect("failed to parse 2");
+        let ipi = parse_conn_ipinfo(conn.as_object().unwrap()).expect("failed to parse 2");
          println!("parsed ipinfo={}", ipi);
     }
 
@@ -482,6 +507,42 @@ mod tests {
             Err(e) => { println!("err={}", e); }
         }
 //        assert_eq!(ip, Err(err));
+    }
+
+    #[test]
+    fn test_bad_strings()
+    {
+        let j = json!({
+          "ipinfo": {
+            "gateway": "192.168.1.1",
+            "ip_address": "192.168.1.9",
+            "netmask": "255.255.255.0",
+            "dnslist": [
+              "192.168.1.1",
+            ]
+          }});
+        let ipinfo = parse_ipinfo(j.as_object().unwrap()).expect("failed to parse");
+        println!("parsed ipinfo={}", ipinfo);
+    }
+
+    #[test]
+    fn test_strongly_typed() 
+    {
+        let s = r#"
+              {
+                "gateway": "172.16.253.1",
+                "ip_address": "172.16.253.42",
+                "netmask": "255.255.255.0",
+                "dnslist": [
+                  "172.16.253.1",
+                  "8.8.8.8"
+                ]
+              }"#;
+
+        match serde_json::from_str::<IPInfo>(s) {
+            Ok(ipinfo) => { println!("found ipinfo={}", ipinfo); },
+            Err(err) => { println!("failed err={}", err); }
+        };
     }
 }
 
