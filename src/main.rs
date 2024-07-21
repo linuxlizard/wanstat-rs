@@ -23,7 +23,7 @@ pub struct GenericConnector
 impl Connector for GenericConnector
 {
     fn print(&self) -> String {
-        format!("{} {} {}", self.name, self.enabled, self.state)
+        format!("{:>40} {} {}", self.name, self.enabled, self.state)
     }
 }
 
@@ -52,7 +52,7 @@ impl Connector for WiFiClientConnector
             None => "<unset>".to_string()
         };
 
-        format!("{} {} {} \"{}\" rssi={} channel={}", 
+        format!("{:>40} {} {} \"{}\" rssi={} channel={}", 
             self.name, 
             self.enabled, 
             self.state, 
@@ -108,7 +108,7 @@ impl Connector for DHCPConnector
             None => "<none>".to_string()
         };
 
-        format!("{} {} {} ipinfo={}", self.name, self.enabled, self.state, s_ipinfo)
+        format!("{:>40} {} {} ipinfo={}", self.name, self.enabled, self.state, s_ipinfo)
     }
 }
 
@@ -188,20 +188,20 @@ fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::M
                     ssid: str_or_none(diagnostics, "SSID").to_string(),
                     signal_strength: get_i32(diagnostics.get("signal_strength")),
                     channel: get_u32(diagnostics.get("channel")),
-                    enabled: enabled,
-                    state: state
+                    enabled,
+                    state
                 })
         },
 
         "DHCP" => {
-            println!("{} ipinfo get={:?}", name, conn.get("ipinfo"));
+            // println!("{} ipinfo get={:?}", name, conn.get("ipinfo"));
 
             Box::new(
                 DHCPConnector {
                     name: String::from(name),
                     ipinfo: parse_conn_ipinfo(conn),
-                    enabled: enabled,
-                    state: state
+                    enabled,
+                    state
                 })
         },
     
@@ -209,8 +209,8 @@ fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::M
             Box::new(
                 GenericConnector {
                     name: String::from(name),
-                    enabled: enabled,
-                    state: state
+                    enabled,
+                    state
                 })
         }
     }
@@ -220,15 +220,15 @@ fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::M
 
 fn print_connectors( v: &Value, dev: &String ) -> Option<()>
 {
-    if let Some(conns) = v.as_array() {
+    if let Some(connector_list) = v.as_array() {
 
-        if conns.len() > 0 {
+        if connector_list.len() > 0 {
             println!("\nconnectors for {}", dev);
             println!("                                    NAME  STATE           EXCEPTION  TIMEOUT  ");
         }
 
-        for c in conns {
-            if let Some(entry) = c.as_object() {
+        for conn in connector_list {
+            if let Some(entry) = conn.as_object() {
 //                println!("entry={:?}", entry);
 
                 let name = match entry.get("name") {
@@ -273,7 +273,11 @@ fn parse_ipinfo( contents: &serde_json::Map<String,Value> ) -> Option<IPInfo>
 
 //        println!("field={:?} {}", field, value.is_string());
 
+        // the ipinfo value fields can contain a single IP address
+        // (e.g., for "ip_address") or an array of IP address
+        // (e.g., for "dns")
         if value.is_string() {
+            // single IP address
             let ip_str = value.as_str()
                             .unwrap();
 //            println!("field={:?} ip={}", field, ip_str);
@@ -289,10 +293,17 @@ fn parse_ipinfo( contents: &serde_json::Map<String,Value> ) -> Option<IPInfo>
             };
         }
         else if value.is_array() {
-            // parse out the dnslist
-            for ipv in value.as_array().unwrap() {
-                println!("dns ip={}", ipv);
+            // multiple IP addresses, probably DNS,
+            // but let's make sure that assumption is always correct
+            
+            if key != "dnslist" {
+                panic!("unexpected/unimplemented key={}", key);
             }
+            
+            // parse out the dnslist
+            // for ipv in value.as_array().unwrap() {
+            //     println!("dns ip={}", ipv);
+            // }
             ipinfo.dnslist = value
                         .as_array()
                         .unwrap()
@@ -399,14 +410,19 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
                         .unwrap();
         let _diagnostics = fields.get("diagnostics");
 
-        let printer = |conns| print_connectors(conns, dev);
+        // Try #1 : print the json
+        // let printer = |conns| print_connectors(conns, dev);
+        // let _ = fields.get("connectors").and_then(printer);
 
-        let _ = fields.get("connectors").and_then(printer);
-
+        // Try #2 : struct + trait
         let connectors:Option<Vec<Box<dyn Connector>>> = get_connectors(fields);
         if let Some(conns) = connectors {
+            println!("\nconnectors for {}", dev);
+            if conns.len() > 0 {
+                println!("                                    NAME  ENABLED  STATE  ");
+            }
             for c in conns {
-                println!("c={}", c.print());
+                println!("{}", c.print());
             }
         }
 
@@ -417,11 +433,24 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
 
 fn main() -> ExitCode {
 
+    match std::env::var("CP_PASSWORD") {
+        Ok(_) => {},
+        Err(_) => {eprintln!("unable to find CP_PASSWORD in environment");
+                return ExitCode::FAILURE
+        }
+    };
+
     let args: Vec<String> = env::args().collect();
-    let router_ip:&str = &args[1];
 
-    let _ = wanstat(router_ip);
+    if args.len() == 1 {
+        println!("usage: wanstat router-ip(s)");
+        return ExitCode::SUCCESS;
+    }
 
+    for router_ip in args {
+        let _ = wanstat(&router_ip);
+    }
+    
     ExitCode::SUCCESS
 }
 
