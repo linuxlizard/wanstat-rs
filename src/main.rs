@@ -11,7 +11,9 @@ pub trait Connector
 {
     fn print(&self) -> String;
 }
-
+macro_rules! connector_common_fields {
+    ($conn:expr) => { format!("{:>40} {} {}", $conn.name, $conn.enabled, $conn.state) };
+}
 // connector we don't have a full parser for
 pub struct GenericConnector
 {
@@ -23,7 +25,8 @@ pub struct GenericConnector
 impl Connector for GenericConnector
 {
     fn print(&self) -> String {
-        format!("{:>40} {} {}", self.name, self.enabled, self.state)
+//        format!("{:>40} {} {}", self.name, self.enabled, self.state)
+        connector_common_fields!(self)
     }
 }
 
@@ -51,11 +54,9 @@ impl Connector for WiFiClientConnector
             Some(v) => v.to_string(),
             None => "<unset>".to_string()
         };
-
-        format!("{:>40} {} {} \"{}\" rssi={} channel={}", 
-            self.name, 
-            self.enabled, 
-            self.state, 
+        
+        format!("{} \"{}\" rssi={} channel={}", 
+            connector_common_fields!(self),            
             self.ssid, 
             signal_strength, 
             channel)
@@ -108,7 +109,9 @@ impl Connector for DHCPConnector
             None => "<none>".to_string()
         };
 
-        format!("{:>40} {} {} ipinfo={}", self.name, self.enabled, self.state, s_ipinfo)
+        format!("{} ipinfo={}", 
+                connector_common_fields!(self), 
+                s_ipinfo)
     }
 }
 
@@ -128,12 +131,6 @@ fn make_string( o: Option<&Value> ) -> String
         None => "(none)".to_string()
     }
 }
-
-//fn get_none() -> &'static str
-//{
-//    const NONE: &str = "(none)";
-//    NONE
-//}
 
 fn str_or_none<'a>( entry: &'a serde_json::Map<String, Value>, key: &str) -> &'a str
 {
@@ -218,7 +215,7 @@ fn parse_connector( fields: &serde_json::Map<String,Value>, conn: &serde_json::M
 }
 
 
-fn print_connectors( v: &Value, dev: &String ) -> Option<()>
+fn _print_connectors( v: &Value, dev: &String ) -> Option<()>
 {
     if let Some(connector_list) = v.as_array() {
 
@@ -425,7 +422,6 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
                 println!("{}", c.print());
             }
         }
-
     }
 
     Ok(())
