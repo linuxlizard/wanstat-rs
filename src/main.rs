@@ -12,7 +12,7 @@ pub trait Connector
     fn print(&self) -> String;
 }
 macro_rules! connector_common_fields {
-    ($conn:expr) => { format!("{:>40} {} {}", $conn.name, $conn.enabled, $conn.state) };
+    ($conn:expr) => { format!("{:>40}  {:7}  {:14}", $conn.name, $conn.enabled, $conn.state) };
 }
 // connector we don't have a full parser for
 pub struct GenericConnector
@@ -311,8 +311,8 @@ fn parse_ipinfo( contents: &serde_json::Map<String,Value> ) -> Option<IPInfo>
         }
     }
 
-    println!("ipinfo={:?}", ipinfo);
-    println!("ipinfo={}", ipinfo);
+//    println!("ipinfo={:?}", ipinfo);
+//    println!("ipinfo={}", ipinfo);
 
     Some(ipinfo)
 }
