@@ -1,6 +1,6 @@
 use std::env;
 use std::process::ExitCode;
-use reqwest::blocking::Client;
+//use reqwest::blocking::Client;
 use serde;
 use serde_json::{Value};
 //use std::net::{IpAddr,};
@@ -118,7 +118,7 @@ impl Connector for DHCPConnector
 fn get_password() -> Option<String>
 {
     // TODO add .netrc support
-    return match std::env::var("CP_PASSWORD") {
+    return match env::var("CP_PASSWORD") {
         Ok(password) => Some(password),
         Err(_) => None
     }
@@ -335,7 +335,12 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
         _ => panic!("unable to find CP_PASSWORD in environment")
     };
 
-    let client = Client::new();
+    // using a ClientBuilder seems to avoid the DNS lookup
+    // on the IP address (which adds a 5-second pause to the run)
+//    let client = Client::new();
+    let client = reqwest::blocking::Client::builder()
+                            .build()
+                            .unwrap();
 
     let target_url = format!("http://{}/api/status/wan", router_ip);
 
@@ -429,7 +434,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
 
 fn main() -> ExitCode {
 
-    match std::env::var("CP_PASSWORD") {
+    match env::var("CP_PASSWORD") {
         Ok(_) => {},
         Err(_) => {eprintln!("unable to find CP_PASSWORD in environment");
                 return ExitCode::FAILURE
