@@ -328,8 +328,10 @@ fn parse_conn_ipinfo(conn: &serde_json::Map<String,Value>) -> Option<IPInfo>
         )
 }
 
-fn wanstat(router_ip: &str) -> reqwest::Result<()>
+fn wanstat(router_ip: &str) -> reqwest::Result<i32>
 {
+//    println!("running wanstat on {}", router_ip);
+    
     let password = match get_password() {
         Some(password) => password,
         _ => panic!("unable to find CP_PASSWORD in environment")
@@ -342,7 +344,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
                             .build()
                             .unwrap();
 
-    let target_url = format!("http://{}/api/status/wan", router_ip);
+    let target_url = format!("https://{}/api/status/wan", router_ip);
 
     let result = client
         .get(target_url)
@@ -369,7 +371,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
     if !success {
         // TODO better error messages
         println!("transaction failed");
-        return Ok(())
+        return Ok(-1)
     }
 
     let j_data:&Value = &j_resp["data"];
@@ -429,7 +431,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<()>
         }
     }
 
-    Ok(())
+    Ok(0)
 }
 
 fn main() -> ExitCode {
@@ -441,15 +443,28 @@ fn main() -> ExitCode {
         }
     };
 
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = env::args()
+        .skip(1)
+        .collect()
+        ;
 
-    if args.len() == 1 {
+    if args.len() == 0 {
         println!("usage: wanstat router-ip(s)");
         return ExitCode::SUCCESS;
     }
 
     for router_ip in args {
-        let _ = wanstat(&router_ip);
+        let result = wanstat(&router_ip);
+        match result {
+            Ok(ret_code) => {
+                if ret_code != 0 {
+                    // a failure from the router, outside of Reqwests knowledge
+                    // (e.g, bad api call)
+                    println!("wanstat api failure err={}", ret_code);
+                }
+            }
+            Err(e) => { println!("wanstat failed {}", e); }
+        }
     }
     
     ExitCode::SUCCESS
