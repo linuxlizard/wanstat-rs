@@ -341,6 +341,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<i32>
     // on the IP address (which adds a 5-second pause to the run)
 //    let client = Client::new();
     let client = reqwest::blocking::Client::builder()
+                            .danger_accept_invalid_certs(true)
                             .build()
                             .unwrap();
 
