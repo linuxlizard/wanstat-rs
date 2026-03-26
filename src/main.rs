@@ -6,6 +6,7 @@ use serde_json::{Value};
 //use std::net::{IpAddr,};
 use std::str::FromStr;
 use std::net::{IpAddr, Ipv4Addr};
+use url::{Url};
 
 pub trait Connector 
 {
@@ -328,7 +329,7 @@ fn parse_conn_ipinfo(conn: &serde_json::Map<String,Value>) -> Option<IPInfo>
         )
 }
 
-fn wanstat(router_ip: &str) -> reqwest::Result<i32>
+fn wanstat(base_url: &Url) -> reqwest::Result<i32>
 {
 //    println!("running wanstat on {}", router_ip);
     
@@ -345,7 +346,8 @@ fn wanstat(router_ip: &str) -> reqwest::Result<i32>
                             .build()
                             .unwrap();
 
-    let target_url = format!("https://{}/api/status/wan", router_ip);
+    let target_url = format!("{}api/status/wan", base_url);
+    println!("target_url={}", target_url);
 
     let result = client
         .get(target_url)
@@ -362,6 +364,7 @@ fn wanstat(router_ip: &str) -> reqwest::Result<i32>
 //    println!("text={:?}", text);
 
     let j_resp:Value = serde_json::from_str(&text).unwrap();
+//    let j_resp:Value = serde_json::from_str(&text).unwrap();
 
 //    println!("j_resp={:?}", j_resp);
 
@@ -454,8 +457,17 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    for router_ip in args {
-        let result = wanstat(&router_ip);
+    for a in args {
+        let router_url = Url::parse(&a);
+        
+        match router_url {
+            Ok(ref u) => println!("u={:?}",u),
+            Err(e) => { eprintln!("e={:?}",e); return ExitCode::FAILURE; } 
+        }
+
+        let u = router_url.unwrap();
+
+        let result = wanstat(&u);
         match result {
             Ok(ret_code) => {
                 if ret_code != 0 {
