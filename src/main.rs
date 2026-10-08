@@ -329,6 +329,15 @@ fn parse_conn_ipinfo(conn: &serde_json::Map<String,Value>) -> Option<IPInfo>
         )
 }
 
+/// Converts a duration in seconds into an "HH:MM:SS" formatted string.
+/// Hours are not padded or capped (e.g. 100 hours renders as "100:00:00").
+fn format_hhmmss(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;                    
+    let seconds = total_seconds % 60;                                        
+    format!("{hours:02}:{minutes:02}:{seconds:02}")
+}      
+  
 fn wanstat(base_url: &Url) -> reqwest::Result<i32>
 {
 //    println!("running wanstat on {}", router_ip);
@@ -407,8 +416,15 @@ fn wanstat(base_url: &Url) -> reqwest::Result<i32>
 
         let summary = make_string(status.get("summary"));
 
-        println!("{dev:>40} {type_:<10} {plugged:<7} {reason:<10} {summary}");
-        
+        let uptime = get_i32(status.get("uptime"));
+
+        if let Some(uptime_seconds) = uptime {
+            let uptime_s = format_hhmmss(uptime_seconds as u64);
+            println!("{dev:>40} {type_:<10} {plugged:<7} {reason:<10} {summary} ({uptime_s})");
+        }
+        else {
+            println!("{dev:>40} {type_:<10} {plugged:<7} {reason:<10} {summary}");
+        }     
     }
 
     for dev in devices.keys() {
